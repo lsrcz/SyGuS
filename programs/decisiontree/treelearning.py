@@ -1,10 +1,11 @@
 import math
 
-from enumerate import enumerateTerm, enumerateBool, resetHeap
-from treedef import TreeLeaf, TreeInnerNode
 import z3.z3
+
+from enumerate import enumerateBool, resetHeap
 from semantics import Expr
-import random
+from treedef import TreeLeaf, TreeInnerNode
+
 
 class TreeLearner:
     def __init__(self, semchecker, z3checker):
@@ -48,6 +49,14 @@ class TreeLearner:
              Expr('z'),
              Expr('u'),
              Expr('w')]
+        '''
+        p = []
+        for i in range(8):
+            p.append(Expr(i))
+        '''
+        # p = [Expr(-1),Expr(1),Expr('+', Expr('x'), Expr('y'))]
+        # p = [Expr(0), Expr(10), Expr(20), Expr(30), Expr(40), Expr(50), Expr('x')]
+
         if len(self.terms) < len(p):
             t = p[len(self.terms)]
             ct = self.gencover(pts, t)
@@ -69,10 +78,10 @@ class TreeLearner:
                 return
         '''
 
-    def genpartition(self, pts, pred):
+    def genpartition(self, pred):
         partition = (set(), set())
         idx = 0
-        for pt in pts:
+        for pt in self.ptsinner:
             symtab = pt
             self.funcproto.expr = pred
             if pred.eval(symtab):
@@ -82,11 +91,11 @@ class TreeLearner:
             idx += 1
         return partition
 
-    def nextPred(self, pts):
+    def nextPred(self):
         pred = enumerateBool()
         if pred == None:
             return
-        partition = self.genpartition(pts, pred)
+        partition = self.genpartition(pred)
         self.preds.append(pred)
         self.partitions.append(partition)
         self.pickedpred.append(False)
@@ -182,7 +191,7 @@ class TreeLearner:
 
         counterexample = self.z3checker.check(str(self.funcproto), [])
         if counterexample is None:
-            return None
+            return None, None
         # counterexample = self.z3checker.check(str(self.funcproto), randomConstraint)
         symtab = {}
         for i in range(len(self.inputlist)):
@@ -191,9 +200,9 @@ class TreeLearner:
                 symtab[s] = int(str(counterexample.eval(z3.Int(s), True)))
             else:
                 symtab[s] = int(str(counterexample.eval(z3.Bool(s), True)))
-        return symtab
-        #symtabs = self.semchecker.getSymtab(symtab)
-        #return symtabs
+        innersymtab = self.semchecker.getSymtab(symtab)
+        symtab = [symtab] * len(innersymtab)
+        return innersymtab, symtab
 
     def mainalgo(self):
         self.pts = []
@@ -217,17 +226,18 @@ class TreeLearner:
             tree = self.learntree(set(range(len(self.pts))))
             while tree is None:
                 self.nextDistinctTerm(self.pts)
-                self.nextPred(self.pts)
+                self.nextPred()
                 tree = self.learntree(set(range(len(self.pts))))
             e = tree.getExpr()
             i = i + 1
             print(e)
-            cexample = self.verifyExpr(e)
-            if cexample == None: #len(cexample) == None:
+            innersymtabs, symtabs = self.verifyExpr(e)
+            if innersymtabs is None:  # len(cexample) == None:
                 print('iter:', i)
                 print('size:', e.size)
                 return e
-            self.pts.append(cexample)
+            self.pts.extend(symtabs)
+            self.ptsinner.extend(innersymtabs)
             # self.pts.extend(cexample)
 
 

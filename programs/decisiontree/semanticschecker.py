@@ -1,14 +1,15 @@
-from semantics import Expr, Func
+from z3 import Int, Bool
+
+from semantics import Func
+
 
 class SemChecker:
-    def __init__(self, funcproto, constraintlist, inputlist, inputtylist):
+    def __init__(self, funcproto, constraint, inputlist, inputtylist):
         self.funcproto = funcproto
         self.inputlist = inputlist
         self.inputtylist = inputtylist
-        self.constraint = constraintlist[0]
+        self.constraint = constraint
 
-        for c in constraintlist[1:]:
-            self.constraint = Expr('and', self.constraint, c)
         self.usage = []
 
         for u in self.searchconstraint(self.constraint):
@@ -59,7 +60,6 @@ class SemChecker:
             for k in t:
                 nsym[k] = t[k].eval(outersymtab)
             ret.append(nsym)
-        return outersymtab
         return ret
 
 
@@ -67,3 +67,14 @@ class SemChecker:
         self.funcproto.expr = expr
         return self.constraint.eval(symtab)
 
+    def getz3vartab(self):
+        def DeclareVar(sort, name):
+            if sort == "Int":
+                return Int(name)
+            if sort == 'Bool':
+                return Bool(name)
+
+        vartab = {}
+        for i, t in zip(self.inputlist, self.inputtylist):
+            vartab[i] = DeclareVar(t, i)
+        return vartab
