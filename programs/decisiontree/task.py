@@ -167,13 +167,33 @@ def _assembly_constraint(clauses, guards):
     return Expr('=>', guard, clause)
 
 
+def _instrument_find_eqrewrite(guards):
+    m = {}
+    for g in guards:
+        if g.op == '=':
+            a1 = g.arg1
+            a2 = g.arg2
+            if not (isinstance(a1.op, str) and a1.arg1 is None):
+                continue
+            if not (isinstance(a2.op, str) and a2.arg1 is None):
+                continue
+            if not (a1.op.endswith('__Int') or a1.op.endswith('__Bool')):
+                if a1.op not in m:
+                    m[a1.op] = {}
+                if a2.op not in m[a1.op]:
+                    m[a1.op][a2.op] = 0
+                m[a1.op][a2.op] += 1
+    return m
+
+
 def _instrument_constraint(constraint, funcproto):
     clauses, guards = _instrument_split_constraint(constraint)
     newclauses = []
     for c in clauses:
         newclause, guards = _do_instrument_constraint(c, funcproto)
         newclauses.append(newclause)
-    return _assembly_constraint(newclauses, guards)
+    m = _instrument_find_eqrewrite(guards)
+    return _assembly_constraint(newclauses, guards), m
 
 
 def _get_instrumented_varmap(constraint, funcproto):
@@ -215,6 +235,176 @@ def _get_instrumented_varlist(constraint, funcproto):
         inputtylist.append(varmap[k])
     return inputlist, inputtylist, varmap
 
+
+def _findoverallmap(eqmaplist):
+    eqmap = {}
+    for m in eqmaplist:
+        for k in m:
+            for l in m[k]:
+                if k not in eqmap:
+                    eqmap[k] = {}
+                if l not in eqmap[k]:
+                    eqmap[k][l] = 0
+                eqmap[k][l] += 1
+    used = set()
+    ret = {}
+    for left in eqmap:
+        m = eqmap[left]
+        n = None
+        max = 0
+        for right in m:
+            if right in used:
+                continue
+            if m[right] > max:
+                max = m[right]
+                n = right
+        if n is not None:
+            used.add(n)
+            ret[left] = n
+    return ret
+
+
+def _subst_eqclass(expr, overallmap):
+    if expr is None:
+        return None
+    op = expr.op
+    if isinstance(op, int):
+        return expr
+    if isinstance(op, bool):
+        return expr
+    if isinstance(op, Func):
+        return Expr(op, list(map(lambda x: _subst_eqclass(x, overallmap), expr.arg1)))
+    if expr.arg1 is None:
+        if expr.op in overallmap:
+            return Expr(overallmap[expr.op])
+        return expr
+    return Expr(op,
+                _subst_eqclass(expr.arg1, overallmap),
+                _subst_eqclass(expr.arg2, overallmap),
+                _subst_eqclass(expr.arg3, overallmap))
+
+
+def _cleanup_eq(expr):
+    if expr is None:
+        return None
+    op = expr.op
+    if isinstance(op, int):
+        return expr
+    if isinstance(op, bool):
+        return expr
+    if isinstance(op, Func):
+        return Expr(op, list(map(_cleanup_eq, expr.arg1)))
+    if op == '=':
+        if expr.arg1.arg1 is None and expr.arg1.op == expr.arg2.op:
+            return Expr(True)
+    if expr.arg1 is None:
+        return expr
+    arg1 = _cleanup_eq(expr.arg1)
+    arg2 = _cleanup_eq(expr.arg2)
+    arg3 = _cleanup_eq(expr.arg3)
+    if op == 'not':
+        if isinstance(arg1.op, bool):
+            return Expr(not arg1.op)
+    elif op == 'or':
+        if isinstance(arg1.op, bool):
+            if arg1.op:
+                return Expr(True)
+            else:
+                return arg2
+        if isinstance(arg2.op, bool):
+            if arg2.op:
+                return Expr(True)
+            else:
+                return arg1
+    elif op == 'and':
+        if isinstance(arg1.op, bool):
+            if arg1.op:
+                return arg2
+            else:
+                return Expr(False)
+        if isinstance(arg2.op, bool):
+            if arg2.op:
+                return arg1
+            else:
+                return Expr(False)
+    elif op == '=>':
+        if isinstance(arg1.op, bool):
+            if arg1.op:
+                return arg2
+            else:
+                return Expr(True)
+        if isinstance(arg2.op, bool):
+            if arg2.op:
+                return Expr(True)
+            else:
+                return arg1
+    elif op == 'xor':
+        if isinstance(arg1.op, bool):
+            if arg1.op:
+                if isinstance(arg2.op, bool):
+                    return Expr(not arg2.op)
+                else:
+                    return Expr('not', arg2)
+            else:
+                return arg2
+        if isinstance(arg2.op, bool):
+            if arg2.op:
+                return Expr('not', arg1)
+            else:
+                return arg1
+    elif op in ['iff', '=', 'xnor']:
+        if isinstance(arg1.op, bool):
+            if arg1.op:
+                return arg2
+            else:
+                if isinstance(arg2.op, bool):
+                    return Expr(not arg2.op)
+                else:
+                    return Expr('not', arg2)
+        if isinstance(arg2.op, bool):
+            if arg2.op:
+                return arg1
+            else:
+                return Expr('not', arg1)
+    elif op == 'nand':
+        if isinstance(arg1.op, bool):
+            if arg1.op:
+                if isinstance(arg2.op, bool):
+                    return Expr(not arg2.op)
+                else:
+                    return Expr('not', arg2)
+            else:
+                return Expr(True)
+        if isinstance(arg2.op, bool):
+            if arg2.op:
+                return Expr('not', arg1)
+            else:
+                return Expr(True)
+    elif op == 'nor':
+        if isinstance(arg1.op, bool):
+            if arg1.op:
+                return Expr(False)
+            else:
+                if isinstance(arg2.op, bool):
+                    return Expr(not arg2.op)
+                else:
+                    return Expr('not', arg2)
+        if isinstance(arg2.op, bool):
+            if arg2.op:
+                return Expr(False)
+            else:
+                return Expr('not', arg1)
+    return Expr(op, arg1, arg2, arg3)
+
+
+def _merge_eqclass(constraintlist, eqmaplist):
+    overallmap = _findoverallmap(eqmaplist)
+    inversemap = {}
+    for o in overallmap:
+        inversemap[overallmap[o]] = o
+    return list(map(_cleanup_eq,
+                    map(lambda x: _subst_eqclass(x, inversemap),
+                        constraintlist)))
 
 class TaskData:
     def __init__(self):
@@ -333,7 +523,9 @@ class SynthTask:
         cnf = buildCNF(self.ori.constraint, self.ori.vartab, self.functionProto)
         cnfsuffix = _instrument_add_suffix(cnf, self.ori.inputmap)
         cnfconstrains = getCNFclause(cnfsuffix)
-        self.ins.constraintlist = list(map(lambda x: _instrument_constraint(x, self.functionProto), cnfconstrains))
+        constraintlist, eqmaplist = zip(
+            *list(map(lambda x: _instrument_constraint(x, self.functionProto), cnfconstrains)))
+        self.ins.constraintlist = _merge_eqclass(constraintlist, eqmaplist)
         self.ins.constraint = _assembly_clauses_with('and', self.ins.constraintlist)
         self.ins.inputlist, self.ins.inputtylist, self.ins.inputmap = \
             _get_instrumented_varlist(self.ins.constraint, self.functionProto)
