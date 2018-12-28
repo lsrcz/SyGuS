@@ -43,7 +43,7 @@ def toString(Expr, Bracket=True, ForceBracket=False):
         return "(%s)" % (' '.join(subexpr))
 
 
-def ReadQuery(bmExpr):
+def ReadQuery(bmExpr, isNeedChecker = False):
     SynFunExpr = []
     VarDecMap = {}
     Constraints = []
@@ -71,9 +71,8 @@ def ReadQuery(bmExpr):
     for var in VarDecMap:
         VarTable[var] = DeclareVar(VarDecMap[var][2], var)
 
-    return SynFunExpr, VarTable, FunDefMap, Constraints
-
-    '''
+    if not isNeedChecker:
+        return SynFunExpr, VarTable, FunDefMap, Constraints
 
     # Declare Target Function
     class SynFunction:
@@ -95,10 +94,6 @@ def ReadQuery(bmExpr):
             self.synFunction=synFunction
 
             self.Constraints=Constraints
-
-            for constraint in Constraints:
-                print "cons"
-                print constraint
 
             self.solver=Solver()
 
@@ -127,4 +122,5 @@ def ReadQuery(bmExpr):
                 return model
 
     checker=Checker(VarTable, SynFunction, Constraints)
-    return checker'''
+
+    return SynFunExpr, VarTable, FunDefMap, Constraints, checker
