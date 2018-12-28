@@ -1,5 +1,7 @@
 import sys
 
+import z3.z3
+
 import sexp
 import translator
 
@@ -14,6 +16,8 @@ def Extend(Stmts, Productions):
                     ret.append(Stmts[0:i] + [extended] + Stmts[i + 1:])
         elif Stmts[i] in Productions:
             for extended in Productions[Stmts[i]]:
+                if extended[0] == '+' or extended[0] == '-':
+                    continue
                 ret.append(Stmts[0:i] + [extended] + Stmts[i + 1:])
     return ret
 
@@ -62,6 +66,7 @@ if __name__ == '__main__':
             else:
                 Productions[NTName].append(NT)
     Count = 0
+    TE_set = set()
     while (len(BfsQueue) != 0):
         Curr = BfsQueue.pop(0)
         # print("Extending "+str(Curr))
@@ -76,7 +81,7 @@ if __name__ == '__main__':
                 -1]  # insert Program just before the last bracket ')'
             Count += 1
             # print (Count)
-            # print (Str)
+            print(Str)
             # if Count % 100 == 1:
             # print (Count)
             # print (Str)
@@ -84,6 +89,8 @@ if __name__ == '__main__':
             # print '1'
             counterexample = checker.check(Str)
             # print counterexample
+            print(int(str(counterexample.eval(z3.Int('x'), True))))
+            print(int(str(counterexample.eval(z3.Int('y'), True))))
             if (counterexample == None):  # No counter-example
                 Ans = Str
                 break
@@ -91,7 +98,7 @@ if __name__ == '__main__':
         # print(TryExtend)
         # raw_input()
         # BfsQueue+=TryExtend
-        TE_set = set()
+
         for TE in TryExtend:
             TE_str = str(TE)
             if not TE_str in TE_set:
