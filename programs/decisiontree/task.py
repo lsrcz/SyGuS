@@ -140,7 +140,7 @@ def _do_instrument_constraint(clause, funcproto):
         for g in guardlist:
             guards.extend(g)
         for x, a in zip(funcproto.arglist, arglist):
-            guards.append(Expr('=', Expr(x), a))
+            guards.append(Expr('not', Expr('=', Expr(x), a)))
         return Expr(clause.op, list(map(Expr, funcproto.arglist))), guards
     a1, guard1 = _do_instrument_constraint(clause.arg1, funcproto)
     a2, guard2 = _do_instrument_constraint(clause.arg2, funcproto)
@@ -162,38 +162,43 @@ def _assembly_clauses_with(op, clauses):
 
 
 def _assembly_constraint(clauses, guards):
-    guard = _assembly_clauses_with('and', guards)
-    clause = _assembly_clauses_with('or', clauses)
-    return Expr('=>', guard, clause)
+    # guard = _assembly_clauses_with('and', guards)
+    # clause = _assembly_clauses_with('or', clauses)
+    # return Expr('', guard, clause)
+    return _assembly_clauses_with('or', guards + clauses)
 
 
 def _instrument_find_eqrewrite(guards):
     m = {}
     for g in guards:
-        if g.op == '=':
-            a1 = g.arg1
-            a2 = g.arg2
-            if not (isinstance(a1.op, str) and a1.arg1 is None):
-                continue
-            if not (isinstance(a2.op, str) and a2.arg1 is None):
-                continue
-            if not (a1.op.endswith('__Int') or a1.op.endswith('__Bool')):
-                if a1.op not in m:
-                    m[a1.op] = {}
-                if a2.op not in m[a1.op]:
-                    m[a1.op][a2.op] = 0
-                m[a1.op][a2.op] += 1
+        if g.op == 'not':
+            t = g.arg1
+            if t.op == '=':
+                a1 = t.arg1
+                a2 = t.arg2
+                if not (isinstance(a1.op, str) and a1.arg1 is None):
+                    continue
+                if not (isinstance(a2.op, str) and a2.arg1 is None):
+                    continue
+                if not (a1.op.endswith('__Int') or a1.op.endswith('__Bool')):
+                    if a1.op not in m:
+                        m[a1.op] = {}
+                    if a2.op not in m[a1.op]:
+                        m[a1.op][a2.op] = 0
+                    m[a1.op][a2.op] += 1
     return m
 
 
 def _instrument_constraint(constraint, funcproto):
     clauses, guards = _instrument_split_constraint(constraint)
     newclauses = []
+    newguards = []
     for c in clauses:
-        newclause, guards = _do_instrument_constraint(c, funcproto)
+        newclause, newguardlist = _do_instrument_constraint(c, funcproto)
         newclauses.append(newclause)
-    m = _instrument_find_eqrewrite(guards)
-    return _assembly_constraint(newclauses, guards), m
+        newguards.extend(newguardlist)
+    m = _instrument_find_eqrewrite(newguards)
+    return _assembly_constraint(newclauses, guards + newguards), m
 
 
 def _get_instrumented_varmap(constraint, funcproto):

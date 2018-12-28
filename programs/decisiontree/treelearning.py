@@ -43,19 +43,17 @@ class TreeLearner:
              Expr('x4'),
              Expr('x5'),
              Expr('x6')]
-        '''
         p = [Expr('x'),
              Expr('y'),
              Expr('z'),
              Expr('u'),
              Expr('w')]
-        '''
         p = []
         for i in range(8):
             p.append(Expr(i))
         '''
         # p = [Expr(-1),Expr(1),Expr('+', Expr('x'), Expr('y'))]
-        # p = [Expr(0), Expr(10), Expr(20), Expr(30), Expr(40), Expr(50), Expr('x')]
+        p = [Expr(0), Expr(10), Expr(20), Expr(30), Expr(40), Expr(50), Expr('x')]
 
         if len(self.terms) < len(p):
             t = p[len(self.terms)]
