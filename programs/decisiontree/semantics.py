@@ -1,22 +1,4 @@
-def plus(arg1, arg2, arg3):
-    return arg1 + arg2
-
-
-def minus(arg1, arg2, arg3):
-    return arg1 - arg2
-
-
-def times(arg1, arg2, arg3):
-    return arg1 * arg2
-
-
-def div(arg1, arg2, arg3):
-    return arg1 // arg2
-
-
-def mod(arg1, arg2, arg3):
-    return arg1 % arg2
-
+from z3 import parse_smt2_string
 
 def ite(arg1, arg2, arg3):
     if arg1:
@@ -24,84 +6,27 @@ def ite(arg1, arg2, arg3):
     else:
         return arg3
 
-
-def andb(arg1, arg2, arg3):
-    return arg1 and arg2
-
-
-def orb(arg1, arg2, arg3):
-    return arg1 or arg2
-
-
-def imply(arg1, arg2, arg3):
-    return (not arg1) or arg2
-
-
-def xor(arg1, arg2, arg3):
-    return arg1 != arg2
-
-
-def xnor(arg1, arg2, arg3):
-    return arg1 == arg2
-
-
-def nand(arg1, arg2, arg3):
-    return not (arg1 and arg2)
-
-
-def nor(arg1, arg2, arg3):
-    return not (arg1 or arg2)
-
-
-def iff(arg1, arg2, arg3):
-    return arg1 == arg2
-
-
-def notb(arg1, arg2, arg3):
-    return not arg1
-
-
-def eq(arg1, arg2, arg3):
-    return arg1 == arg2
-
-
-def leq(arg1, arg2, arg3):
-    return arg1 <= arg2
-
-
-def lt(arg1, arg2, arg3):
-    return arg1 < arg2
-
-
-def geq(arg1, arg2, arg3):
-    return arg1 >= arg2
-
-
-def gt(arg1, arg2, arg3):
-    return arg1 > arg2
-
-
 opmap = {
-    '+': plus,
-    '-': minus,
-    '*': times,
-    'div': div,
-    'mod': mod,
+    '+': lambda x, y, z: x + y,
+    '-': lambda x, y, z: x - y,
+    '*': lambda x, y, z: x * y,
+    'div': lambda x, y, z: x // y,
+    'mod': lambda x, y, z: x % y,
     'ite': ite,
-    'and': andb,
-    'or': orb,
-    '=>': imply,
-    'xor': xor,
-    'xnor': xnor,
-    'nand': nand,
-    'nor': nor,
-    'iff': iff,
-    'not': notb,
-    '=': eq,
-    '<=': leq,
-    '<': lt,
-    '>=': geq,
-    '>': gt
+    'and': lambda x, y, z: x and y,
+    'or': lambda x, y, z: x or y,
+    '=>': lambda x, y, z: (not x) or y,
+    'xor': lambda x, y, z: x != y,
+    'xnor': lambda x, y, z: x == y,
+    'nand': lambda x, y, z: not (x and y),
+    'nor': lambda x, y, z: not (x or y),
+    'iff': lambda x, y, z: x == y,
+    'not': lambda x, y, z: not x,
+    '=': lambda x, y, z: x == y,
+    '<=': lambda x, y, z: x <= y,
+    '<': lambda x, y, z: x < y,
+    '>=': lambda x, y, z: x >= y,
+    '>': lambda x, y, z: x > y
 }
 
 class Func:
@@ -109,6 +34,9 @@ class Func:
         self.name = name
         self.arglist = arglist
         self.typelist = typelist
+        self.argtymap = {}
+        for a, t in zip(arglist, typelist):
+            self.argtymap[a] = t
         self.retty = retty
         self.expr = expr
 
@@ -133,6 +61,18 @@ class Func:
         else:
             ret += str(self.expr) + ')'
         return ret
+
+    def declarestr(self):
+        ret = '(declare-fun ' + self.name + ' ('
+        for i in range(len(self.typelist)):
+            if i != 0:
+                ret += ' '
+            ret += self.typelist[i]
+        ret += ') ' + self.retty + ')'
+        return ret
+
+    def getargtype(self, arg):
+        return self.argtymap[arg]
 
 class Expr:
     productions = None
@@ -335,6 +275,41 @@ def exprFromList(l, funcprotos):
             return Expr(bool(l[1]))
     else:
         return Expr(l)
+
+
+def exprsToZ3(exprs, vartab, func=None, defined=False):
+    smtstr = ''
+    if func is not None:
+        if defined:
+            smtstr += str(func)
+        else:
+            smtstr += func.declarestr()
+        smtstr += '\n'
+    for s in map(str, exprs):
+        smtstr += '(assert '
+        smtstr += s
+        smtstr += ')\n'
+    return parse_smt2_string(smtstr, decls=vartab)
+
+
+def exprToList(expr: Expr):
+    if isinstance(expr.op, int):
+        return ('Int', expr.op)
+    if isinstance(expr.op, bool):
+        return ('Bool', expr.op)
+    if isinstance(expr.op, Func):
+        args = list(map(exprToList, expr.arg1))
+        ret = [expr.op.name]
+        ret.extend(args)
+        return ret
+    if expr.arg1 is None:
+        return expr.op
+    ret = [expr.op, exprToList(expr.arg1)]
+    if expr.arg2 is not None:
+        ret.append(exprToList(expr.arg2))
+    if expr.arg3 is not None:
+        ret.append(exprToList(expr.arg3))
+    return ret
 
 def main():
     Expr.productions = {}
