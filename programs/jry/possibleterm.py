@@ -302,3 +302,64 @@ def getPossibleValue(Operators, Expr, Terminals):
 
     resultSet = simplifyResultSet(resultSet, [], functionCallDic, SynFunExpr[2], VarTable, ReplacedConsSet)
     return resultSet, Value
+
+
+def findPossibleValue(bmExpr):
+    SynFunExpr = []
+    StartSym = 'My-Start-Symbol'  # virtual starting symbol
+    for expr in bmExpr:
+        if len(expr) == 0:
+            continue
+        elif expr[0] == 'synth-fun':
+            SynFunExpr = expr
+    FuncDefine = ['define-fun'] + SynFunExpr[1:4]  # copy function signature
+    Productions = {StartSym: []}
+    ReturnType = SynFunExpr[3]
+    Type = {StartSym: SynFunExpr[3]}  # set starting symbol's return type
+    Terminals = {'Int': [], 'Bool': []}
+    Operators = []
+
+    for NonTerm in SynFunExpr[4]:  # SynFunExpr[4] is the production rule
+        NTName = NonTerm[0]
+        NTType = NonTerm[1]
+        assert NTType in ['Int', 'Bool']
+        if NTType == Type[StartSym]:
+            Productions[StartSym].append(NTName)
+        Type[NTName] = NTType
+        # Productions[NTName] = NonTerm[2]
+        Productions[NTName] = []
+        for NT in NonTerm[2]:
+            if type(NT) == tuple:
+                Productions[NTName].append(str(NT[1]))  # deal with ('Int',0). You can also utilize type information, but you will suffer from these tuples.
+            else:
+                Productions[NTName].append(NT)
+
+    operatorTable = {}
+    for NonTerm in SynFunExpr[4]:
+        for NT in NonTerm[2]:
+            current = NT
+            if type(NT) == tuple:
+                current = str(NT[1])
+            if type(current) == str:
+                if current not in Type and current not in Terminals[NonTerm[1]]:
+                    Terminals[NonTerm[1]].append(current)
+            else:
+                operatorArgs = []
+                for i in NT[1:]:
+                    if i in Type:
+                        operatorArgs.append([Type[i]])
+                    else:
+                        operatorArgs.append(i)
+                operatorStr = str([NonTerm[1], operatorArgs])
+                if operatorStr in operatorTable:
+                    operatorLoc = operatorTable[operatorStr]
+                    Operators[operatorLoc][0].append(NT[0])
+                else:
+                    operator = [[NT[0]], NonTerm[1]]
+                    operator.append(operatorArgs)
+                    operatorTable[operatorStr] = len(Operators)
+                    Operators.append(operator)
+    Operators = simplifyOperator(Operators)
+
+    possibleValue, _ = getPossibleValue(Operators, bmExpr, Terminals)
+    return possibleValue
