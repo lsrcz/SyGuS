@@ -2,13 +2,12 @@ import math
 
 import z3.z3
 
-from enumerate import enumerateBool, resetHeap
-from semantics import Expr
+from enumerate import enumerateBool, resetHeap, enumerateTerm
 from treedef import TreeLeaf, TreeInnerNode
 
 
 class TreeLearner:
-    def __init__(self, semchecker, z3checker):
+    def __init__(self, semchecker, z3checker, possiblevalue=None):
         self.funcproto = semchecker.funcproto
         self.inputlist = semchecker.inputlist
         self.inputtylist = semchecker.inputtylist
@@ -23,6 +22,7 @@ class TreeLearner:
         self.partitions = []
         self.pickedpred = []
         self.lastterms = []
+        self.possiblevalue = possiblevalue
 
     def gencover(self, pts, term):
         cover = set()
@@ -49,32 +49,33 @@ class TreeLearner:
              Expr('u'),
              Expr('w')]
         p = []
-        for i in range(8):
+
+        for i in range(10):
             p.append(Expr(i))
+
         '''
         # p = [Expr(-1),Expr(1),Expr('+', Expr('x'), Expr('y'))]
-        p = [Expr(0), Expr(10), Expr(20), Expr(30), Expr(40), Expr(50), Expr('x')]
+        # p = [Expr(0), Expr(10), Expr(20), Expr(30), Expr(40), Expr(50), Expr('x')]
 
-        if len(self.terms) < len(p):
-            t = p[len(self.terms)]
-            ct = self.gencover(pts, t)
-            # if self.covers.count(ct) == 0:
-            for i in ct:
-                self.labels[i].add(len(self.terms))
-            self.terms.append(t)
-            self.covers.append(ct)
-        return
-        '''
-        while True:
-            t = enumerateTerm()
-            ct = self.gencover(pts, t)
-            if self.covers.count(ct) == 0:
+        if self.possiblevalue:
+            if len(self.terms) < len(self.possiblevalue):
+                t = self.possiblevalue[len(self.terms)]
+                ct = self.gencover(pts, t)
+                # if self.covers.count(ct) == 0:
                 for i in ct:
                     self.labels[i].add(len(self.terms))
                 self.terms.append(t)
                 self.covers.append(ct)
-                return
-        '''
+        else:
+            while True:
+                t = enumerateTerm()
+                ct = self.gencover(pts, t)
+                if self.covers.count(ct) == 0:
+                    for i in ct:
+                        self.labels[i].add(len(self.terms))
+                    self.terms.append(t)
+                    self.covers.append(ct)
+                    return
 
     def genpartition(self, pred):
         partition = (set(), set())
@@ -179,15 +180,20 @@ class TreeLearner:
 
     def verifyExpr(self, expr):
         randomConstraint = [
-            ['constraint', ['>=', 'x', '5']],
-            ['constraint', ['>=', 'y', '5']],
-            ['constraint', ['>=', 'z', '5']],
-            ['constraint', ['>=', 'w', '5']],
+            ['constraint', ['>=', 'x', '10']],
+            ['constraint', ['>=', 'y', '10']],
+            ['constraint', ['>=', 'z', '10']],
+            ['constraint', ['>=', 'w', '10']],
+            # ['constraint', ['>=', 'u', '10']],
+            # ['constraint', ['>=', 'x6', '10']],
+            # ['constraint', ['>=', 'x7', '10']],
+            # ['constraint', ['>=', 'x8', '10']],
+            #['constraint', ['>=', 'x9', '10']],
             ['constraint', ['true']]
         ]
         self.funcproto.expr = expr
 
-        counterexample = self.z3checker.check(str(self.funcproto), [])
+        counterexample = self.z3checker.check(str(self.funcproto), randomConstraint)
         if counterexample is None:
             return None, None
         # counterexample = self.z3checker.check(str(self.funcproto), randomConstraint)

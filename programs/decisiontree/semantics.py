@@ -274,6 +274,8 @@ def exprFromList(l, funcprotos):
         if l[0] == 'Bool':
             return Expr(bool(l[1]))
     else:
+        if l[0] in "0123456789":
+            return Expr(int(l))
         return Expr(l)
 
 
