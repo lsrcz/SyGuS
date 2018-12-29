@@ -93,7 +93,7 @@ if __name__ == '__main__':
 
     i = 0
     for studentname in os.listdir(programdir):
-        if studentname != "component2": continue
+        if studentname != "jry2": continue
         toexe = programdir + '\'' + studentname + '\'' + '/main.py '
         outfile.write(studentname + ': \n')
         # cmd = ('python3.5 ' if '3.5' in studentname else 'python ')

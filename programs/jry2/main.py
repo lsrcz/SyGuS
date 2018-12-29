@@ -12,7 +12,7 @@ string2pythonOperator = {
     "-": lambda x, y: x - y,
     "*": lambda x, y: x * y,
     "div": lambda x, y: x // y,
-    "mod": lambda x, y: x % y,
+    "mod": lambda x, y: x % y if y != 0 else -100000,
     "ite": lambda b, x, y: x if b else y,
     "=": lambda x, y: x == y,
     "<=": lambda x, y: x <= y,
@@ -67,15 +67,19 @@ class BoolTable:
 
     def parseVar(self, var, sample):
         if type(var) == str:
+            #print(var, self.VarTable, sample)
             if var in self.VarTable:
                 result = sample[self.VarTable[var]]
                 if result is None:
                     if is_int(self.VarTable[var]):
-                        return 0
+                        return 1
                     else:
                         return True
                 if is_int(result):
-                    return result.as_long()
+                    try:
+                        return result.as_long()
+                    except:
+                        return random.randint(100000, 200000)
                 else:
                     return is_true(result)
             return int(var)
@@ -99,6 +103,9 @@ class BoolTable:
             return [True, None]
 
     def insert(self, var, depth):
+        if not var in self.Cons[depth]:
+            self.Cons[depth].append(var)
+        return
         if self.Root == -1:
             self.Root = 0
             self.TreeTable.append(var)
@@ -140,6 +147,7 @@ class BoolTable:
                     rsize = depth - lsize
                     for lTerm in self.Values.get(lsize):
                         for rTerm in self.Values.get(rsize):
+                            if operator == "=" and str(lTerm) < str(rTerm): continue
                             # print("tryInsert", [operator, lTerm, rTerm])
                             ConsTable.insert([operator, lTerm, rTerm], depth)
 
@@ -207,7 +215,6 @@ def reduceCons(solver, currentCons, Super, VarTable, argList, functionArg):
 
 
 def getTermCondition(Expr, TermInfo, currentTerm, RemainTerms, ConsTable, VarTable):
-    #print(currentTerm)
     SynFunExpr, VarTable, FunDefMap, Constraints = translator.ReadQuery(Expr)
     inputVarTable = VarTable.copy()
 
@@ -250,62 +257,42 @@ def getTermCondition(Expr, TermInfo, currentTerm, RemainTerms, ConsTable, VarTab
 
     depth = 0
     result = []
-    maxExampleNum = 3
     qualityConsNum = 3
     inputVars = []
     for var in inputVarTable:
         inputVars.append(inputVarTable[var])
+
+    Examples = []
     while True:
         exampleResult = exampleGenerator.check()
         if exampleResult == unsat:
             break
 
-        example = exampleGenerator.model()
-        Examples = [example]
         exampleGenerator.push()
-        exampleCons = []
-        for varName in inputVarTable:
-            var = inputVarTable[varName]
-            if example[var] is not None:
-                exampleCons.append(var == example[var])
-        exampleGenerator.add(Not(And(exampleCons)))
-        for _ in range(1, maxExampleNum):
-            if exampleGenerator.check() == unsat:
-                break
-            for __ in range(1, qualityConsNum):
-                lVar = inputVars[random.randint(0, len(inputVars) - 1)]
-                rVar = inputVars[random.randint(0, len(inputVars) - 1)]
-                exampleGenerator.push()
+        for __ in range(1, qualityConsNum):
+            lVar = inputVars[random.randint(0, len(inputVars) - 1)]
+            rVar = inputVars[random.randint(0, len(inputVars) - 1)]
+            exampleGenerator.push()
+            exampleGenerator.add(lVar > rVar + 5)
+            if exampleGenerator.check() == sat:
+                exampleGenerator.pop()
                 exampleGenerator.add(lVar > rVar + 5)
-                if exampleGenerator.check() == sat:
-                    exampleGenerator.pop()
-                    exampleGenerator.add(lVar > rVar + 5)
-                else:
-                    exampleGenerator.pop()
-            exampleGenerator.check()
-            example = exampleGenerator.model()
-            Examples.append(example)
-            for varName in inputVarTable:
-                var = inputVarTable[varName]
-                if example[var] is not None:
-                    exampleCons.append(var == example[var])
-            exampleGenerator.add(Not(And(exampleCons)))
+            else:
+                exampleGenerator.pop()
+        exampleGenerator.check()
+        example = exampleGenerator.model()
         exampleGenerator.pop()
+        Examples.append(example)
 
         BestCons = None
-        totalExample = len(Examples)
-        # print(Examples)
-        for id in reversed(range(1 << totalExample)):
-            if id == 0:
-                break
-            currentExample = []
-            for i in range(totalExample):
-                if (id & (1 << i)) > 0:
-                    currentExample.append(Examples[i])
-            suitableCons = ConsTable.filter(depth, currentExample)
+        while len(Examples) > 0:
+            suitableCons = ConsTable.filter(depth, Examples)
             if checkValid(checkSolver, suitableCons, VarTable, SynFunExpr[2], functionArgs):
                 BestCons = suitableCons
                 break
+            Examples = Examples[1:]
+        #input()
+        #print(Examples)
         if BestCons is None:
             depth += 1
             continue
@@ -321,24 +308,7 @@ def getTermCondition(Expr, TermInfo, currentTerm, RemainTerms, ConsTable, VarTab
             exampleGenerator.add(parse_smt2_string(spec, decls=VarTable))
         else:
             return []
-    #pprint.pprint(result)
     return result
-
-
-def addTerminals(Term, Terminals):
-    if type(Term) == list:
-        for term in Term:
-            addTerminals(term, Terminals)
-    else:
-        strTerm = Term
-        if type(Term) == tuple:
-            strTerm = str(Term[1])
-        try:
-            value = int(strTerm)
-            if strTerm not in Terminals['Int']:
-                Terminals['Int'].append(strTerm)
-        except:
-            pass
 
 
 def checkOccur(s, Term):
@@ -352,9 +322,40 @@ def checkOccur(s, Term):
     return False
 
 
+def addTerminals(Term, Terminals, functionSymbol):
+    if type(Term) == list:
+        operator = Term[0]
+        if operator in [">", "<", "=", ">=", "<="] and checkOccur(functionSymbol, Term):
+            isAdd = False
+            if not checkOccur(functionSymbol, Term[1]): isAdd = addTerminals(Term[2], Terminals, functionSymbol) or isAdd
+            if not checkOccur(functionSymbol, Term[2]): isAdd = addTerminals(Term[1], Terminals, functionSymbol) or isAdd
+            return isAdd
+        isAdd = False
+        for term in Term:
+            isAdd = addTerminals(term, Terminals, functionSymbol) or isAdd
+        return isAdd
+    else:
+        strTerm = Term
+        isAdd = False
+        if type(Term) == tuple:
+            strTerm = str(Term[1])
+        try:
+            value = int(strTerm)
+            if strTerm not in Terminals['Int']:
+                Terminals['Int'].append(strTerm)
+                isAdd = True
+        except:
+            pass
+        return isAdd
+
+
 if __name__ == '__main__':
-    task = SynthTask(sys.argv[1])
+    sys.setrecursionlimit(100000)
+    inputFile = sys.argv[1]
+    #inputFile = "../../tests/open_tests/array_search_2.sl"
+    task = SynthTask(inputFile)
     bmExpr = task.ins.bmExpr
+    #pprint.pprint(bmExpr)
     #print (checker.check('(define-fun f ((x Int)) Int (mod (* x 3) 10)  )'))
     #raw_input()
     SynFunExpr = []
@@ -398,24 +399,31 @@ if __name__ == '__main__':
             if type(current) == str:
                 if current not in Type and current not in Terminals[NonTerm[1]]:
                     Terminals[NonTerm[1]].append(current)
-    addTerminals(Constraints, Terminals)
 
     Operators = []
     for operatorType in defaultOperators:
         newOperator = []
         for ope in operatorType[0]:
-            if checkOccur(ope, previousConstraints) or checkOccur(ope, previousSynFunExpr[4]):
+            if checkOccur(ope, previousSynFunExpr[4]) or checkOccur(ope, previousConstraints):
                 newOperator.append(ope)
         Operators.append([newOperator, operatorType[1], operatorType[2]])
 
     Operators = simplifyOperator(Operators)
-    # print(Terminals)
+    #print(Terminals)
     #print(Operators)
 
     PossibleTerm, Values = getPossibleValue(Operators, bmExpr, Terminals)
     if len(PossibleTerm) == 1:
         print(getCode([[[], PossibleTerm[0]]], SynFunExpr))
         exit(0)
+
+    #pprint.pprint(previousConstraints)
+    if addTerminals(previousConstraints, Terminals, SynFunExpr[1]):
+        Values.hashTable = {}
+        Values.Value = [[]]
+        for term in Terminals["Int"]:
+            Values.addNewValue(term, 0)
+    # print(PossibleTerm, Values.Value)
 
     argVarTable = {}
     for arg in SynFunExpr[2]:
@@ -430,4 +438,4 @@ if __name__ == '__main__':
 
     resultCode = getCode(TermInfo, SynFunExpr)
     print(resultCode)
-    #print(checker.check(resultCode))
+    assert(checker.check(resultCode) is None)
