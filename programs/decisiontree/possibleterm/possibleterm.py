@@ -2,7 +2,7 @@ import random
 
 from z3 import *
 
-import translatorjry as translator
+import possibleterm.translatorjry as translator
 
 
 def getId(type, id):

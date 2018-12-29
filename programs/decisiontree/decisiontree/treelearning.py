@@ -2,8 +2,8 @@ import math
 
 import z3.z3
 
-from enumerate import enumerateBool, resetHeap, enumerateTerm
-from treedef import TreeLeaf, TreeInnerNode
+from enumerate.enumerate import enumerateBool, resetHeap, enumerateTerm
+from decisiontree.treedef import TreeLeaf, TreeInnerNode
 
 
 def genmoreconstraint(productions, inputlist, inputtylist):

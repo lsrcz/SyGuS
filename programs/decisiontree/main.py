@@ -1,9 +1,9 @@
 import sys
 
-from possibleterm import findPossibleValue
-from semantics import exprFromList
-from task import SynthTask
-from treelearning import TreeLearner, genmoreconstraint
+from possibleterm.possibleterm import findPossibleValue
+from semantics.semantics import exprFromList
+from instrument.task import SynthTask
+from decisiontree.treelearning import TreeLearner, genmoreconstraint
 
 
 def main():

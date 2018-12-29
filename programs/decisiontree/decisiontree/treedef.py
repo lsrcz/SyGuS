@@ -1,4 +1,4 @@
-from semantics import Expr
+from semantics.semantics import Expr
 
 
 class TreeNode:

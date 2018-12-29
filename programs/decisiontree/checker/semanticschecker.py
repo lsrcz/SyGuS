@@ -1,6 +1,6 @@
 from z3 import Int, Bool
 
-from semantics import Func
+from semantics.semantics import Func
 
 
 class SemChecker:
