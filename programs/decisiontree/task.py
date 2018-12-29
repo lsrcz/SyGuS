@@ -411,6 +411,46 @@ def _merge_eqclass(constraintlist, eqmaplist):
                     map(lambda x: _subst_eqclass(x, inversemap),
                         constraintlist)))
 
+
+def _accumulate_call_params(constraint: Expr):
+    if constraint is None:
+        return None
+    ret = []
+    if isinstance(constraint.op, int):
+        return None
+    if isinstance(constraint.op, bool):
+        return None
+    if isinstance(constraint.op, Func):
+        for t in constraint.arg1:
+            ret.append({str(t)})
+        for t in map(_accumulate_call_params, constraint.arg1):
+            if t is not None:
+                for i in range(len(ret)):
+                    ret[i] = ret[i].union(t[i])
+        return ret
+    a1 = _accumulate_call_params(constraint.arg1)
+    a2 = _accumulate_call_params(constraint.arg2)
+    a3 = _accumulate_call_params(constraint.arg3)
+    for t in [a1, a2, a3]:
+        if t is not None:
+            if len(ret) == 0:
+                ret = t
+            else:
+                for i in range(len(ret)):
+                    ret[i] = ret[i].union(t[i])
+    if len(ret) == 0:
+        return None
+    else:
+        return ret
+
+
+def _check_single_call(constraint: Expr):
+    r = _accumulate_call_params(constraint)
+    for t in r:
+        if len(t) > 1:
+            return False
+    return True
+
 class TaskData:
     def __init__(self):
         self.bmExpr = None
@@ -528,6 +568,9 @@ class SynthTask:
         cnf = buildCNF(self.ori.constraint, self.ori.vartab, self.functionProto)
         cnfsuffix = _instrument_add_suffix(cnf, self.ori.inputmap)
         cnfconstrains = getCNFclause(cnfsuffix)
+        if not all(map(_check_single_call, cnfconstrains)):
+            self.ins = self.ori
+            return
         constraintlist, eqmaplist = zip(
             *list(map(lambda x: _instrument_constraint(x, self.functionProto), cnfconstrains)))
         self.ins.constraintlist = _merge_eqclass(constraintlist, eqmaplist)
