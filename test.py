@@ -93,7 +93,7 @@ if __name__ == '__main__':
 
     i = 0
     for studentname in os.listdir(programdir):
-        if studentname != "component2": continue
+        if studentname != "jry2": continue
         toexe = programdir + '\'' + studentname + '\'' + '/main.py '
         outfile.write(studentname + ': \n')
         # cmd = ('python3.5 ' if '3.5' in studentname else 'python ')
@@ -102,7 +102,7 @@ if __name__ == '__main__':
         print(i)
         # arg = opentests + 'three.sl'
         # my_test(cmd + toexe + arg, outfile, arg, timeout)
-        for testgroup in [hiddentests]:
+        for testgroup in [opentests]:
             for test in os.listdir(testgroup):
                 if '.sl' not in test: continue
                 arg = testgroup + test
