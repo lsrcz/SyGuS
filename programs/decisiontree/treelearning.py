@@ -259,11 +259,8 @@ class TreeLearner:
                 tree = self.learntree(set(range(len(self.pts))))
             e = tree.getExpr()
             i = i + 1
-            print(e)
             innersymtabs, symtabs = self.verifyExpr(e)
             if innersymtabs is None:  # len(cexample) == None:
-                print('iter:', i)
-                print('size:', e.size)
                 return e
             self.pts.extend(symtabs)
             self.ptsinner.extend(innersymtabs)
