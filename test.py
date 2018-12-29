@@ -102,7 +102,7 @@ if __name__ == '__main__':
         print(i)
         # arg = opentests + 'three.sl'
         # my_test(cmd + toexe + arg, outfile, arg, timeout)
-        for testgroup in [hiddentests]:
+        for testgroup in [opentests]:
             for test in os.listdir(testgroup):
                 if '.sl' not in test: continue
                 arg = testgroup + test
