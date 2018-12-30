@@ -1,20 +1,6 @@
 from z3 import *
-import translator
+import jry2.translator as translator
 import random
-
-string2pythonOperator = {
-    "+": lambda x, y: x + y,
-    "-": lambda x, y: x - y,
-    "*": lambda x, y: x * y,
-    "div": lambda x, y: x // y,
-    "mod": lambda x, y: x % y if y != 0 else -100000,
-    "ite": lambda b, x, y: x if b else y,
-    "=": lambda x, y: x == y,
-    "<=": lambda x, y: x <= y,
-    ">=": lambda x, y: x >= y,
-    "<": lambda x, y: x < y,
-    ">": lambda x, y: x > y
-}
 
 def getId(type, id):
     return type + str(id)
@@ -212,32 +198,10 @@ class ValueSet:
         self.hashTable = {}
         self.Value = [[]]
 
-    def parseVar(self, var, sample):
-        if type(var) == str:
-            #print(var, self.VarTable, sample)
-            if var in self.VarTable:
-                result = sample[self.VarTable[var]]
-                if result is None:
-                    if is_int(self.VarTable[var]):
-                        return 1
-                    else:
-                        return True
-                if is_int(result):
-                    try:
-                        return result.as_long()
-                    except:
-                        return random.randint(100000, 200000)
-                else:
-                    return is_true(result)
-            return int(var)
-        if len(var) == 3:
-            return string2pythonOperator[var[0]](self.parseVar(var[1], sample), self.parseVar(var[2], sample))
-        else:
-            return string2pythonOperator[var[0]](self.parseVar(var[1], sample), self.parseVar(var[2], sample),
-                                                 self.parseVar(var[3], sample))
-
-    def getValue(self, var, sample):
-        return self.parseVar(var, sample)
+    def get(self, depth):
+        while len(self.Value) <= depth:
+            self.extendValue()
+        return self.Value[depth]
 
     def addNewValue(self, var, depth):
         resultVar = self.VarTable["__result"]
@@ -249,7 +213,14 @@ class ValueSet:
 
         sampleOutput = []
         for sample in self.Samples:
-            sampleOutput.append(self.getValue(var, sample))
+            solver.push()
+            for arg in self.VarTable:
+                if arg in sample:
+                    solver.add(self.VarTable[arg] == sample[arg])
+            solver.check()
+            model = solver.model()
+            sampleOutput.append(model[resultVar].as_long())
+            solver.pop()
 
         hashIndex = str(sampleOutput)
         if hashIndex not in self.hashTable:
@@ -267,11 +238,6 @@ class ValueSet:
         self.hashTable[hashIndex].append(var)
         self.Value[depth].append(var)
         return True
-
-    def get(self, depth):
-        while len(self.Value) <= depth:
-            self.extendValue()
-        return self.Value[depth]
 
     def extendValue(self):
         depth = len(self.Value)

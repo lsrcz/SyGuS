@@ -1,20 +1,9 @@
-from z3 import *
-import translator
 import random
 
-string2pythonOperator = {
-    "+": lambda x, y: x + y,
-    "-": lambda x, y: x - y,
-    "*": lambda x, y: x * y,
-    "div": lambda x, y: x // y,
-    "mod": lambda x, y: x % y if y != 0 else -100000,
-    "ite": lambda b, x, y: x if b else y,
-    "=": lambda x, y: x == y,
-    "<=": lambda x, y: x <= y,
-    ">=": lambda x, y: x >= y,
-    "<": lambda x, y: x < y,
-    ">": lambda x, y: x > y
-}
+from z3 import *
+
+import decisiontree.possibleterm.translatorjry as translator
+
 
 def getId(type, id):
     return type + str(id)
@@ -50,7 +39,7 @@ def replaceFunctionCall(Term, functionCallDic, functionName, outputType, VarTabl
                 resTerm[1].append(str(functionCallVar))
             else:
                 id = len(functionCallDic)
-                currentOutput = declareVar(outputType, "functionCall%d"%(id), VarTable)
+                currentOutput = declareVar(outputType, "functionCall%d" % (id), VarTable)
                 functionCallDic[str(newArguments)] = [currentOutput, newArguments]
                 if str(currentOutput) not in resTerm[0]:
                     resTerm[0].append(str(currentOutput))
@@ -113,7 +102,7 @@ def replaceTerm(term, s, t):
 
 def dfsGetPossibleValueCons(currentSet, functionCalls, Args, VarTable, currentFunctionCall, ReplacedCons):
     if len(functionCalls) == 0:
-        spec = "\n".join(list(map(lambda x: "(assert %s)"%(translator.toString(x[1:])), ReplacedCons)))
+        spec = "\n".join(list(map(lambda x: "(assert %s)" % (translator.toString(x[1:])), ReplacedCons)))
         result = parse_smt2_string(spec, decls=VarTable)
         return [Not(And(result))]
     functionVar, functionArgs = functionCalls[0]
@@ -127,7 +116,6 @@ def dfsGetPossibleValueCons(currentSet, functionCalls, Args, VarTable, currentFu
         result += dfsGetPossibleValueCons(currentSet, functionCalls[1:], Args, VarTable, currentFunctionCall,
                                           list(map(lambda x: replaceTerm(x, str(functionVar), newTerm), ReplacedCons)))
     return result
-
 
 
 def isValueSetFull(currentSet, functionCallDic, ArgumentDict, VarTable, ReplacedConsSet):
@@ -144,7 +132,7 @@ def isValueSetFull(currentSet, functionCallDic, ArgumentDict, VarTable, Replaced
 
 
 def simplifyResultSet(resultSet, superSet, functionCallDic, ArgumentDict, VarTable, ReplacedConsSet):
-    #print(len(resultSet), len(superSet))
+    # print(len(resultSet), len(superSet))
     if isValueSetFull(superSet, functionCallDic, ArgumentDict, VarTable, ReplacedConsSet):
         return []
     if len(resultSet) == 1:
@@ -161,7 +149,7 @@ def getConsSet(ConsInfo):
     functionCallDic = {}
     functionCallId = 1
     loc = [0]
-    consSet =[[[],[]]]
+    consSet = [[[], []]]
     # pprint.pprint(ConsInfo)
     for consInfo in ConsInfo:
         for functionName in consInfo[0]:
@@ -212,36 +200,14 @@ class ValueSet:
         self.hashTable = {}
         self.Value = [[]]
 
-    def parseVar(self, var, sample):
-        if type(var) == str:
-            #print(var, self.VarTable, sample)
-            if var in self.VarTable:
-                result = sample[self.VarTable[var]]
-                if result is None:
-                    if is_int(self.VarTable[var]):
-                        return 1
-                    else:
-                        return True
-                if is_int(result):
-                    try:
-                        return result.as_long()
-                    except:
-                        return random.randint(100000, 200000)
-                else:
-                    return is_true(result)
-            return int(var)
-        if len(var) == 3:
-            return string2pythonOperator[var[0]](self.parseVar(var[1], sample), self.parseVar(var[2], sample))
-        else:
-            return string2pythonOperator[var[0]](self.parseVar(var[1], sample), self.parseVar(var[2], sample),
-                                                 self.parseVar(var[3], sample))
-
-    def getValue(self, var, sample):
-        return self.parseVar(var, sample)
+    def get(self, depth):
+        while len(self.Value) <= depth:
+            self.extendValue()
+        return self.Value[depth]
 
     def addNewValue(self, var, depth):
         resultVar = self.VarTable["__result"]
-        spec = "(assert (= %s %s))"%(str(resultVar), translator.toString(var))
+        spec = "(assert (= %s %s))" % (str(resultVar), translator.toString(var))
         result = parse_smt2_string(spec, decls=self.VarTable)
 
         solver = Solver()
@@ -249,7 +215,14 @@ class ValueSet:
 
         sampleOutput = []
         for sample in self.Samples:
-            sampleOutput.append(self.getValue(var, sample))
+            solver.push()
+            for arg in self.VarTable:
+                if arg in sample:
+                    solver.add(self.VarTable[arg] == sample[arg])
+            solver.check()
+            model = solver.model()
+            sampleOutput.append(model[resultVar].as_long())
+            solver.pop()
 
         hashIndex = str(sampleOutput)
         if hashIndex not in self.hashTable:
@@ -257,21 +230,16 @@ class ValueSet:
         else:
             for otherVar in self.hashTable[hashIndex]:
                 solver.push()
-                spec = "(assert (not (= %s %s)))"%(str(resultVar), translator.toString(otherVar))
+                spec = "(assert (not (= %s %s)))" % (str(resultVar), translator.toString(otherVar))
                 solver.add(parse_smt2_string(spec, decls=self.VarTable))
                 if solver.check() == unsat:
                     return False
                 solver.pop()
 
-        #print(var)
+        # print(var)
         self.hashTable[hashIndex].append(var)
         self.Value[depth].append(var)
         return True
-
-    def get(self, depth):
-        while len(self.Value) <= depth:
-            self.extendValue()
-        return self.Value[depth]
 
     def extendValue(self):
         depth = len(self.Value)
@@ -296,7 +264,8 @@ def getPossibleValue(Operators, Expr, Terminals):
     functionCallDic = {}
     ReplacedConsInfo = []
     for i in range(len(Constraints)):
-        ReplacedConsInfo.append(replaceFunctionCall(Constraints[i], functionCallDic, SynFunExpr[1], SynFunExpr[3], VarTable))
+        ReplacedConsInfo.append(
+            replaceFunctionCall(Constraints[i], functionCallDic, SynFunExpr[1], SynFunExpr[3], VarTable))
     ReplacedConsSet = getConsSet(ReplacedConsInfo)
     # pprint.pprint(ReplacedConsSet)
 
@@ -326,10 +295,10 @@ def getPossibleValue(Operators, Expr, Terminals):
         argVarTable["__result"] = Int("__result")
         for terminal in Terminals['Int']:
             Value.addNewValue(terminal, depth)
-        #print(Value)
+        # print(Value)
         while True:
             resultSet += Value.get(depth)
-            #print(resultSet)
+            # print(resultSet)
             if isValueSetFull(resultSet, functionCallDic, SynFunExpr[2], VarTable, ReplacedConsSet):
                 break
             depth += 1
@@ -364,7 +333,8 @@ def findPossibleValue(bmExpr):
         Productions[NTName] = []
         for NT in NonTerm[2]:
             if type(NT) == tuple:
-                Productions[NTName].append(str(NT[1]))  # deal with ('Int',0). You can also utilize type information, but you will suffer from these tuples.
+                Productions[NTName].append(str(NT[
+                                                   1]))  # deal with ('Int',0). You can also utilize type information, but you will suffer from these tuples.
             else:
                 Productions[NTName].append(NT)
 
