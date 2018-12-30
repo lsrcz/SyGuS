@@ -2,12 +2,33 @@ import math
 
 import z3.z3
 
-from enumerate import enumerateBool, resetHeap, enumerateTerm
-from treedef import TreeLeaf, TreeInnerNode
+from enumerate.enumerate import enumerateBool, resetHeap, enumerateTerm
+from decisiontree.treedef import TreeLeaf, TreeInnerNode
+
+
+def genmoreconstraint(productions, inputlist, inputtylist):
+    intconst = []
+    constraintlist = []
+    for t in productions:
+        for k in productions[t]:
+            if isinstance(k, list) and k[0] == 'Int':
+                intconst.append(k[1])
+    m = max(intconst)
+    for i, t in zip(inputlist, inputtylist):
+        if t == 'Int':
+            constraintlist.append([
+                'constraint',
+                [
+                    '>=',
+                    i,
+                    str(m + 5)
+                ]
+            ])
+    return constraintlist
 
 
 class TreeLearner:
-    def __init__(self, semchecker, z3checker, possiblevalue=None):
+    def __init__(self, semchecker, z3checker, possiblevalue=None, moreconstraint=None):
         self.funcproto = semchecker.funcproto
         self.inputlist = semchecker.inputlist
         self.inputtylist = semchecker.inputtylist
@@ -23,6 +44,11 @@ class TreeLearner:
         self.pickedpred = []
         self.lastterms = []
         self.possiblevalue = possiblevalue
+        if moreconstraint is None:
+            self.moreconstraint = []
+        else:
+            self.moreconstraint = moreconstraint
+
 
     def gencover(self, pts, term):
         cover = set()
@@ -179,23 +205,23 @@ class TreeLearner:
         return TreeInnerNode(self.preds[picked], l, r)
 
     def verifyExpr(self, expr):
-        randomConstraint = [
-            ['constraint', ['>=', 'x', '10']],
-            ['constraint', ['>=', 'y', '10']],
-            ['constraint', ['>=', 'z', '10']],
-            ['constraint', ['>=', 'w', '10']],
-            # ['constraint', ['>=', 'u', '10']],
-            # ['constraint', ['>=', 'x6', '10']],
-            # ['constraint', ['>=', 'x7', '10']],
-            # ['constraint', ['>=', 'x8', '10']],
-            #['constraint', ['>=', 'x9', '10']],
-            ['constraint', ['true']]
-        ]
         self.funcproto.expr = expr
 
-        counterexample = self.z3checker.check(str(self.funcproto), randomConstraint)
+        counterexample = self.z3checker.check(str(self.funcproto), self.moreconstraint)
+
+        def testDelete():
+            if len(self.moreconstraint) == 0:
+                return None
+            self.moreconstraint.pop(-1)
+            counterexample = self.z3checker.check(str(self.funcproto), self.moreconstraint)
+            if counterexample is None:
+                return testDelete()
+            return counterexample
+
         if counterexample is None:
-            return None, None
+            counterexample = testDelete()
+            if counterexample is None:
+                return None, None
         # counterexample = self.z3checker.check(str(self.funcproto), randomConstraint)
         symtab = {}
         for i in range(len(self.inputlist)):
@@ -234,11 +260,8 @@ class TreeLearner:
                 tree = self.learntree(set(range(len(self.pts))))
             e = tree.getExpr()
             i = i + 1
-            print(e)
             innersymtabs, symtabs = self.verifyExpr(e)
             if innersymtabs is None:  # len(cexample) == None:
-                print('iter:', i)
-                print('size:', e.size)
                 return e
             self.pts.extend(symtabs)
             self.ptsinner.extend(innersymtabs)

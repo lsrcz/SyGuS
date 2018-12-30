@@ -1,10 +1,10 @@
 from z3 import *
 
-import sexp
-import translator
-from cnf import buildCNF, getCNFclause
-from semantics import Func, Expr, exprFromList, exprToList
-from semanticschecker import SemChecker
+from instrument.sexp import sexp
+from checker.translator import ReadQuery
+from instrument.cnf import buildCNF, getCNFclause
+from semantics.semantics import Func, Expr, exprFromList, exprToList
+from checker.semanticschecker import SemChecker
 
 
 def _get_inputlists(bmdlvarlist):
@@ -487,7 +487,7 @@ class SynthTask:
         bm = self._stripComments(benchmarkFile)
         self.ori = TaskData()
         self.ins = None
-        self.ori.bmExpr = sexp.sexp.parseString(bm, parseAll=True).asList()[0]
+        self.ori.bmExpr = sexp.parseString(bm, parseAll=True).asList()[0]
         self.ori.bmLogic = None
         self.ori.bmSyn = None
         self.ori.bmDeclvar = []
@@ -511,7 +511,7 @@ class SynthTask:
 
         self._initialize_production()
         Expr.productions = self.productions
-        self.ori.z3checker = translator.ReadQuery(self.ori.bmExpr)
+        self.ori.z3checker = ReadQuery(self.ori.bmExpr)
         self.ori.inputlist, self.ori.inputtylist, self.ori.inputmap = _get_inputlists(self.ori.bmDeclvar)
         self.ori.constraintlist = _get_constraintlist(self.ori.bmConstraint, self.functionProto)
         self.ori.constraint = _constraintlist2conjunction(self.ori.constraintlist)
@@ -590,7 +590,7 @@ class SynthTask:
             [self.ins.bmSyn] + \
             self.ins.bmConstraint + \
             [self.ins.bmEnd]
-        self.ins.z3checker = translator.ReadQuery(self.ins.bmExpr)
+        self.ins.z3checker = ReadQuery(self.ins.bmExpr)
         self.ins.vartab = _getvartab(self.ins.inputlist, self.ins.inputtylist)
         self.ins.semchecker = SemChecker(
             self.functionProto,

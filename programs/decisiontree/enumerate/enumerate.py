@@ -1,6 +1,6 @@
 import heapq
 
-from semantics import Expr
+from semantics.semantics import Expr
 
 heap = []
 used = set()

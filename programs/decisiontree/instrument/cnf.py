@@ -1,6 +1,6 @@
 from z3 import *
 
-from semantics import Expr, exprsToZ3
+from semantics.semantics import Expr, exprsToZ3
 
 
 def eliminateOp(expr):
