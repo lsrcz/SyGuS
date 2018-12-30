@@ -216,6 +216,7 @@ class TreeLearner:
             counterexample = self.z3checker.check(str(self.funcproto), self.moreconstraint)
             if counterexample is None:
                 return testDelete()
+            return counterexample
 
         if counterexample is None:
             counterexample = testDelete()
