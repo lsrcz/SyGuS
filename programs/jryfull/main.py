@@ -27,7 +27,6 @@ defaultOperators = [
     [["<", ">", "<=", ">=", "="], "Bool", [["Int"], ["Int"]]]
 ]
 
-
 def stripComments(bmFile):
     noComments = '('
     for line in bmFile:
@@ -68,7 +67,7 @@ class BoolTable:
 
     def parseVar(self, var, sample):
         if type(var) == str:
-            # print(var, self.VarTable, sample)
+            #print(var, self.VarTable, sample)
             if var in self.VarTable:
                 result = sample[self.VarTable[var]]
                 if result is None:
@@ -95,7 +94,7 @@ class BoolTable:
 
     def checkEq(self, var1, var2):
         solver = Solver()
-        spec = "(assert (xor %s %s))" % (translator.toString(var1), translator.toString(var2))
+        spec = "(assert (xor %s %s))"%(translator.toString(var1), translator.toString(var2))
         solver.add(parse_smt2_string(spec, decls=self.VarTable))
         result = solver.check()
         if result == sat:
@@ -159,7 +158,7 @@ class BoolTable:
 
     def filter(self, depth, Examples):
         result = []
-        for i in range(depth + 1):
+        for i in range(depth+1):
             for cons in self.getCons(i):
                 isSuitable = True
                 for example in Examples:
@@ -238,17 +237,15 @@ def getTermCondition(Expr, TermInfo, currentTerm, RemainTerms, ConsTable, VarTab
     exampleGenerator = Solver()
     checkSolver = Solver()
     for condition, term in TermInfo:
-        spec = "(assert (not %s))" % (translator.toString(replaceArgs(condition, SynFunExpr[2], functionArgs)))
+        spec = "(assert (not %s))"%(translator.toString(replaceArgs(condition, SynFunExpr[2], functionArgs)))
         spec = parse_smt2_string(spec, decls=VarTable)
         exampleGenerator.add(spec)
         checkSolver.add(spec)
     for term in RemainTerms:
-        spec = "(assert (not (= %s %s)))" % (
-        str(functionCallVar), translator.toString(replaceArgs(term, SynFunExpr[2], functionArgs)))
+        spec = "(assert (not (= %s %s)))"%(str(functionCallVar), translator.toString(replaceArgs(term, SynFunExpr[2], functionArgs)))
         # print(spec)
         exampleGenerator.add(parse_smt2_string(spec, decls=VarTable))
-    spec = "(assert (= %s %s))" % (
-    str(functionCallVar), translator.toString(replaceArgs(currentTerm, SynFunExpr[2], functionArgs)))
+    spec = "(assert (= %s %s))"%(str(functionCallVar), translator.toString(replaceArgs(currentTerm, SynFunExpr[2], functionArgs)))
     spec = parse_smt2_string(spec, decls=VarTable)
     exampleGenerator.add(spec)
     checkSolver.add(spec)
@@ -265,15 +262,13 @@ def getTermCondition(Expr, TermInfo, currentTerm, RemainTerms, ConsTable, VarTab
     for var in inputVarTable:
         inputVars.append(inputVarTable[var])
 
-    Examples = []
-    currentCondition = []
+    Branches = []
     while True:
         exampleGenerator.push()
-        if len(currentCondition) > 0:
-            spec = "(assert (not %s))" % (
-            translator.toString(replaceArgs(currentCondition, SynFunExpr[2], functionArgs)))
+        for _, currentCondition in Branches:
+            spec = "(assert (not %s))" % (translator.toString(replaceArgs(currentCondition, SynFunExpr[2], functionArgs)))
             exampleGenerator.add(parse_smt2_string(spec, decls=VarTable))
-
+            
         exampleResult = exampleGenerator.check()
         if exampleResult == unsat:
             break
@@ -292,40 +287,35 @@ def getTermCondition(Expr, TermInfo, currentTerm, RemainTerms, ConsTable, VarTab
         example = exampleGenerator.model()
         exampleGenerator.pop()
         exampleGenerator.pop()
-        Examples.append(example)
 
-        BestCons = None
-        isChange = False
-        while len(Examples) > 0:
-            suitableCons = ConsTable.filter(depth, Examples)
+        isContain = False
+        for branch in Branches:
+            branch[0].append(example)
+            suitableCons = ConsTable.filter(depth, branch[0])
             if checkValid(checkSolver, suitableCons, VarTable, SynFunExpr[2], functionArgs):
-                BestCons = suitableCons
-                break
-            Examples = Examples[1:]
-            isChange = True
-        if isChange and len(currentCondition) > 0:
-            if len(result) == 0:
-                result = currentCondition
+                reducedCondition = reduceCons(checkSolver, suitableCons, [], VarTable, SynFunExpr[2], functionArgs, True)
+                if len(reducedCondition) == 0:
+                    return []
+                branch[1] = reformatListCons(reducedCondition)
+                isContain = True
             else:
-                result = ["or", result, currentCondition]
-            spec = "(assert (not %s))" % (
-            translator.toString(replaceArgs(currentCondition, SynFunExpr[2], functionArgs)))
-            exampleGenerator.add(parse_smt2_string(spec, decls=VarTable))
-            currentCondition = []
-        # input()
-        # print(Examples)
-        if BestCons is None:
-            depth += 1
-            continue
+                branch[0].pop()
 
-        reducedCondition = reduceCons(checkSolver, BestCons, [], VarTable, SynFunExpr[2], functionArgs, True)
-        currentCondition = reformatListCons(reducedCondition)
-        if len(currentCondition) == 0:
-            return []
-    if len(result) == 0:
-        result = currentCondition
-    else:
-        result = ["or", result, currentCondition]
+        if not isContain:
+            suitableCons = ConsTable.filter(depth, [example])
+            if checkValid(checkSolver, suitableCons, VarTable, SynFunExpr[2], functionArgs):
+                reducedCondition = reduceCons(checkSolver, suitableCons, [], VarTable, SynFunExpr[2], functionArgs, True)
+                if len(reducedCondition) == 0:
+                    return []
+                Branches.append([[example], reformatListCons(reducedCondition)])
+            else:
+                depth += 1
+                continue
+    for _, currentCondition in Branches:
+        if len(result) == 0:
+            result = currentCondition
+        else:
+            result = ["or", result, currentCondition]
     return result
 
 
@@ -345,10 +335,8 @@ def addTerminals(Term, Terminals, functionSymbol):
         operator = Term[0]
         if operator in [">", "<", "=", ">=", "<="] and checkOccur(functionSymbol, Term):
             isAdd = False
-            if not checkOccur(functionSymbol, Term[1]): isAdd = addTerminals(Term[2], Terminals,
-                                                                             functionSymbol) or isAdd
-            if not checkOccur(functionSymbol, Term[2]): isAdd = addTerminals(Term[1], Terminals,
-                                                                             functionSymbol) or isAdd
+            if not checkOccur(functionSymbol, Term[1]): isAdd = addTerminals(Term[2], Terminals, functionSymbol) or isAdd
+            if not checkOccur(functionSymbol, Term[2]): isAdd = addTerminals(Term[1], Terminals, functionSymbol) or isAdd
             return isAdd
         isAdd = False
         for term in Term:
@@ -372,44 +360,44 @@ def addTerminals(Term, Terminals, functionSymbol):
 if __name__ == '__main__':
     sys.setrecursionlimit(100000)
     inputFile = sys.argv[1]
-    # inputFile = "../../tests/open_tests/array_search_2.sl"
+    #inputFile = "../../tests/open_tests/array_search_2.sl"
     task = SynthTask(inputFile)
     bmExpr = task.ins.bmExpr
-    # pprint.pprint(bmExpr)
-    # print (checker.check('(define-fun f ((x Int)) Int (mod (* x 3) 10)  )'))
-    # raw_input()
+    #pprint.pprint(bmExpr)
+    #print (checker.check('(define-fun f ((x Int)) Int (mod (* x 3) 10)  )'))
+    #raw_input()
     SynFunExpr = []
-    StartSym = 'My-Start-Symbol'  # virtual starting symbol
+    StartSym = 'My-Start-Symbol' #virtual starting symbol
     for expr in bmExpr:
-        if len(expr) == 0:
+        if len(expr)==0:
             continue
-        elif expr[0] == 'synth-fun':
-            SynFunExpr = expr
-    FuncDefine = ['define-fun'] + SynFunExpr[1:4]  # copy function signature
-    Productions = {StartSym: []}
+        elif expr[0]=='synth-fun':
+            SynFunExpr=expr
+    FuncDefine = ['define-fun']+SynFunExpr[1:4] #copy function signature
+    Productions = {StartSym:[]}
     ReturnType = SynFunExpr[3]
-    Type = {StartSym: SynFunExpr[3]}  # set starting symbol's return type
-    Terminals = {'Int': [], 'Bool': []}
+    Type = {StartSym:SynFunExpr[3]} # set starting symbol's return type
+    Terminals = {'Int':[], 'Bool':[]}
     Operators = []
 
-    for NonTerm in SynFunExpr[4]:  # SynFunExpr[4] is the production rule
+    for NonTerm in SynFunExpr[4]: #SynFunExpr[4] is the production rule
         NTName = NonTerm[0]
         NTType = NonTerm[1]
         assert NTType in ['Int', 'Bool']
         if NTType == Type[StartSym]:
             Productions[StartSym].append(NTName)
         Type[NTName] = NTType
-        # Productions[NTName] = NonTerm[2]
+        #Productions[NTName] = NonTerm[2]
         Productions[NTName] = []
         for NT in NonTerm[2]:
             if type(NT) == tuple:
-                Productions[NTName].append(str(NT[
-                                                   1]))  # deal with ('Int',0). You can also utilize type information, but you will suffer from these tuples.
+                Productions[NTName].append(str(NT[1])) # deal with ('Int',0). You can also utilize type information, but you will suffer from these tuples.
             else:
                 Productions[NTName].append(NT)
 
     SynFunExpr, VarTable, _, Constraints, checker = translator.ReadQuery(bmExpr, True)
     previousSynFunExpr, _, _, previousConstraints = translator.ReadQuery(task.ori.bmExpr)
+
 
     for NonTerm in SynFunExpr[4]:
         for NT in NonTerm[2]:
@@ -429,15 +417,15 @@ if __name__ == '__main__':
         Operators.append([newOperator, operatorType[1], operatorType[2]])
 
     Operators = simplifyOperator(Operators)
-    # print(Terminals)
-    # print(Operators)
+    #print(Terminals)
+    #print(Operators)
 
     PossibleTerm, Values = getPossibleValue(Operators, bmExpr, Terminals)
     if len(PossibleTerm) == 1:
         print(getCode([[[], PossibleTerm[0]]], SynFunExpr))
         exit(0)
 
-    # pprint.pprint(previousConstraints)
+    #pprint.pprint(previousConstraints)
     if addTerminals(previousConstraints, Terminals, SynFunExpr[1]):
         Values.hashTable = {}
         Values.Value = [[]]
@@ -454,8 +442,8 @@ if __name__ == '__main__':
     ConsTable = BoolTable(argVarTable, SynFunExpr[2], Values, Operators)
     for i in range(len(PossibleTerm)):
         term = PossibleTerm[i]
-        TermInfo.append([getTermCondition(bmExpr, TermInfo, term, PossibleTerm[i + 1:], ConsTable, VarTable), term])
+        TermInfo.append([getTermCondition(bmExpr, TermInfo, term, PossibleTerm[i+1:], ConsTable, VarTable), term])
 
     resultCode = getCode(TermInfo, SynFunExpr)
     print(resultCode)
-    assert (checker.check(resultCode) is None)
+    assert(checker.check(resultCode) is None)
