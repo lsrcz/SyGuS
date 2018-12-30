@@ -149,7 +149,7 @@ class BoolTable:
                         for rTerm in self.Values.get(rsize):
                             if operator == "=" and str(lTerm) < str(rTerm): continue
                             # print("tryInsert", [operator, lTerm, rTerm])
-                            ConsTable.insert([operator, lTerm, rTerm], depth)
+                            self.insert([operator, lTerm, rTerm], depth)
 
     def getCons(self, depth):
         while len(self.Cons) <= depth:
