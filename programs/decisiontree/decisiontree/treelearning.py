@@ -13,6 +13,8 @@ def genmoreconstraint(productions, inputlist, inputtylist):
         for k in productions[t]:
             if isinstance(k, list) and k[0] == 'Int':
                 intconst.append(k[1])
+    if len(intconst) == 0:
+        return []
     m = max(intconst)
     for i, t in zip(inputlist, inputtylist):
         if t == 'Int':
@@ -237,6 +239,7 @@ class TreeLearner:
     def mainalgo(self):
         self.pts = []
         i = 0
+        firsttime = True
         while True:
             self.terms = []
             self.preds = []
@@ -253,7 +256,9 @@ class TreeLearner:
             while len(allunion) != len(self.pts):
                 self.nextDistinctTerm(self.pts)
                 allunion = allunion.union(self.covers[-1])
-            tree = self.learntree(set(range(len(self.pts))))
+            if firsttime:
+                tree = self.learntree(set(range(len(self.pts))))
+                firsttime = False
             while tree is None:
                 self.nextDistinctTerm(self.pts)
                 self.nextPred()
