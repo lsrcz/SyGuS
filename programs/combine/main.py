@@ -1,10 +1,20 @@
 import multiprocessing
 import jry2.main
 import decisiontree.main
+import jryfull.main
 import sys
+import fcntl
 
-funcs = [jry2.main.main, decisiontree.main.main]
-ids = ["jry2", "decisiontree"]
+funcs = [jry2.main.main, decisiontree.main.main, jryfull.main.main]
+ids = ["jry2", "decisiontree", "jryfull"]
+
+def print_answer(x):
+    if len(x) > 2000:
+        try:
+            fcntl.fcntl(1, 1031, len(x) + 100)
+        except:
+            pass
+    print(x)
 
 def main():
     manager = multiprocessing.Manager()
@@ -20,7 +30,7 @@ def main():
         for (p, s) in zip(jobs, ids):
             if not p.is_alive():
                 if return_dict[s] != "invalid":
-                    print(return_dict[s])
+                    print_answer(return_dict[s])
                     found = True
                     break
         if found:
