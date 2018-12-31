@@ -311,6 +311,8 @@ def getTermCondition(Expr, TermInfo, currentTerm, RemainTerms, ConsTable, VarTab
             else:
                 depth += 1
                 continue
+        pprint.pprint(list(map(lambda x: x[0], Branches)))
+        input()
     for _, currentCondition in Branches:
         if len(result) == 0:
             result = currentCondition
