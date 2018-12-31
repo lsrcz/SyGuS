@@ -2,35 +2,13 @@ import math
 
 import z3.z3
 
-from enumerate.enumerate import enumerateBool, resetHeap, enumerateTerm
-from decisiontree.treedef import TreeLeaf, TreeInnerNode
-
-
-def genmoreconstraint(productions, inputlist, inputtylist):
-    intconst = []
-    constraintlist = []
-    for t in productions:
-        for k in productions[t]:
-            if isinstance(k, list) and k[0] == 'Int':
-                intconst.append(k[1])
-    if len(intconst) == 0:
-        return []
-    m = max(intconst)
-    for i, t in zip(inputlist, inputtylist):
-        if t == 'Int':
-            constraintlist.append([
-                'constraint',
-                [
-                    '>=',
-                    i,
-                    str(m + 5)
-                ]
-            ])
-    return constraintlist
+from enumerate import enumerateBool, resetHeap
+from semantics import Expr
+from treedef import TreeLeaf, TreeInnerNode
 
 
 class TreeLearner:
-    def __init__(self, semchecker, z3checker, possiblevalue=None, moreconstraint=None):
+    def __init__(self, semchecker, z3checker):
         self.funcproto = semchecker.funcproto
         self.inputlist = semchecker.inputlist
         self.inputtylist = semchecker.inputtylist
@@ -45,12 +23,6 @@ class TreeLearner:
         self.partitions = []
         self.pickedpred = []
         self.lastterms = []
-        self.possiblevalue = possiblevalue
-        if moreconstraint is None:
-            self.moreconstraint = []
-        else:
-            self.moreconstraint = moreconstraint
-
 
     def gencover(self, pts, term):
         cover = set()
@@ -77,33 +49,32 @@ class TreeLearner:
              Expr('u'),
              Expr('w')]
         p = []
-
-        for i in range(10):
+        for i in range(8):
             p.append(Expr(i))
-
         '''
         # p = [Expr(-1),Expr(1),Expr('+', Expr('x'), Expr('y'))]
-        # p = [Expr(0), Expr(10), Expr(20), Expr(30), Expr(40), Expr(50), Expr('x')]
+        p = [Expr(0), Expr(10), Expr(20), Expr(30), Expr(40), Expr(50), Expr('x')]
 
-        if self.possiblevalue:
-            if len(self.terms) < len(self.possiblevalue):
-                t = self.possiblevalue[len(self.terms)]
-                ct = self.gencover(pts, t)
-                # if self.covers.count(ct) == 0:
+        if len(self.terms) < len(p):
+            t = p[len(self.terms)]
+            ct = self.gencover(pts, t)
+            # if self.covers.count(ct) == 0:
+            for i in ct:
+                self.labels[i].add(len(self.terms))
+            self.terms.append(t)
+            self.covers.append(ct)
+        return
+        '''
+        while True:
+            t = enumerateTerm()
+            ct = self.gencover(pts, t)
+            if self.covers.count(ct) == 0:
                 for i in ct:
                     self.labels[i].add(len(self.terms))
                 self.terms.append(t)
                 self.covers.append(ct)
-        else:
-            while True:
-                t = enumerateTerm()
-                ct = self.gencover(pts, t)
-                if self.covers.count(ct) == 0:
-                    for i in ct:
-                        self.labels[i].add(len(self.terms))
-                    self.terms.append(t)
-                    self.covers.append(ct)
-                    return
+                return
+        '''
 
     def genpartition(self, pred):
         partition = (set(), set())
@@ -207,23 +178,18 @@ class TreeLearner:
         return TreeInnerNode(self.preds[picked], l, r)
 
     def verifyExpr(self, expr):
+        randomConstraint = [
+            ['constraint', ['>=', 'x', '5']],
+            ['constraint', ['>=', 'y', '5']],
+            ['constraint', ['>=', 'z', '5']],
+            ['constraint', ['>=', 'w', '5']],
+            ['constraint', ['true']]
+        ]
         self.funcproto.expr = expr
 
-        counterexample = self.z3checker.check(str(self.funcproto), self.moreconstraint)
-
-        def testDelete():
-            if len(self.moreconstraint) == 0:
-                return None
-            self.moreconstraint.pop(-1)
-            counterexample = self.z3checker.check(str(self.funcproto), self.moreconstraint)
-            if counterexample is None:
-                return testDelete()
-            return counterexample
-
+        counterexample = self.z3checker.check(str(self.funcproto), [])
         if counterexample is None:
-            counterexample = testDelete()
-            if counterexample is None:
-                return None, None
+            return None, None
         # counterexample = self.z3checker.check(str(self.funcproto), randomConstraint)
         symtab = {}
         for i in range(len(self.inputlist)):
@@ -239,7 +205,6 @@ class TreeLearner:
     def mainalgo(self):
         self.pts = []
         i = 0
-        firsttime = True
         while True:
             self.terms = []
             self.preds = []
@@ -256,17 +221,18 @@ class TreeLearner:
             while len(allunion) != len(self.pts):
                 self.nextDistinctTerm(self.pts)
                 allunion = allunion.union(self.covers[-1])
-            if firsttime:
-                tree = self.learntree(set(range(len(self.pts))))
-                firsttime = False
+            tree = self.learntree(set(range(len(self.pts))))
             while tree is None:
                 self.nextDistinctTerm(self.pts)
                 self.nextPred()
                 tree = self.learntree(set(range(len(self.pts))))
             e = tree.getExpr()
             i = i + 1
+            print(e)
             innersymtabs, symtabs = self.verifyExpr(e)
             if innersymtabs is None:  # len(cexample) == None:
+                print('iter:', i)
+                print('size:', e.size)
                 return e
             self.pts.extend(symtabs)
             self.ptsinner.extend(innersymtabs)
