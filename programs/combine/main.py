@@ -5,8 +5,8 @@ import jryfull.main
 import sys
 import fcntl
 
-funcs = [jry2.main.main, decisiontree.main.main, jryfull.main.main]
-ids = ["jry2", "decisiontree", "jryfull"]
+funcs = [jry2.main.main, decisiontree.main.main]
+ids = ["jry2", "decisiontree"]
 
 def print_answer(x):
     if len(x) > 2000:
